@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WALLETSCOPE</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+    body { font-family: 'Inter', sans-serif; background: #0a0a0f; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    .glass { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(20px); }
+    .glow { box-shadow: 0 0 40px rgba(99, 102, 241, 0.15); }
+    .score-ring {
+      background: conic-gradient(var(--color) calc(var(--pct) * 1%), rgba(255,255,255,0.05) 0);
+      border-radius: 50%;
+    }
+    .grade-HIGH { --color: #22c55e; color: #22c55e; }
+    .grade-MEDIUM { --color: #eab308; color: #eab308; }
+    .grade-LOW { --color: #f97316; color: #f97316; }
+    .grade-VERY_LOW { --color: #ef4444; color: #ef4444; }
+    .factor-bar { background: rgba(255,255,255,0.06); border-radius: 6px; overflow: hidden; }
+    .factor-fill { height: 100%; border-radius: 6px; transition: width 1s ease; }
+    .fade-in { animation: fadeIn 0.5s ease forwards; opacity: 0; }
+    @keyframes fadeIn { to { opacity: 1; } }
+    .slide-up { animation: slideUp 0.6s ease forwards; opacity: 0; transform: translateY(20px); }
+    @keyframes slideUp { to { opacity: 1; transform: translateY(0); } }
+    .pulse-dot { animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+    input::placeholder { color: rgba(255,255,255,0.25); }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+  </style>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            dark: { 800: '#12121a', 900: '#0a0a0f' },
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="min-h-screen text-white">
+
+  <!-- Header -->
+  <header class="border-b border-white/5 px-6 py-4">
+    <div class="max-w-6xl mx-auto flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center">
+          <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+          </svg>
+        </div>
+        <h1 class="text-lg font-bold tracking-tight">WALLETSCOPE</h1>
+        <span class="text-xs text-white/30 ml-1">v1.0</span>
+      </div>
+      <div class="flex items-center gap-2 text-xs text-white/40">
+        <div class="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot"></div>
+        Agent Live
+      </div>
+    </div>
+  </header>
+
+  <!-- Search -->
+  <div class="max-w-6xl mx-auto px-6 pt-12 pb-6">
+    <div class="text-center mb-8">
+      <h2 class="text-3xl font-bold mb-2">Wallet Intelligence</h2>
+      <p class="text-white/40 text-sm">Verify any wallet before you copy-trade. Zero hallucination, real data only.</p>
+    </div>
+    <div class="flex gap-3 max-w-2xl mx-auto">
+      <input
+        id="addressInput"
+        type="text"
+        placeholder="Enter wallet address (0x...)"
+        class="flex-1 bg-white/5 border border-white/10 rounded-xl px-5 py-3.5 text-sm mono focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/25 transition-all"
+        onkeydown="if(event.key==='Enter') scan()"
+      />
+      <button
+        onclick="scan()"
+        id="scanBtn"
+        class="px-6 py-3.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-semibold transition-all hover:shadow-lg hover:shadow-indigo-500/25 active:scale-95"
+      >
+        Deep Scan
+      </button>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading" class="hidden max-w-6xl mx-auto px-6 py-12 text-center">
+    <div class="inline-flex items-center gap-3 text-white/50">
+      <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+      </svg>
+      <span>Analyzing on-chain data...</span>
+    </div>
+  </div>
+
+  <!-- Error -->
+  <div id="error" class="hidden max-w-6xl mx-auto px-6 py-4">
+    <div class="bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-red-400 text-sm text-center"></div>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dashboard" class="hidden max-w-6xl mx-auto px-6 pb-16">
+
+    <!-- Row 1: Trust Score + Portfolio Overview -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+
+      <!-- Trust Score Card -->
+      <div class="glass rounded-2xl p-6 glow slide-up" style="animation-delay:0.1s">
+        <div class="text-xs text-white/40 uppercase tracking-wider mb-4">Trust Score</div>
+        <div class="flex items-center justify-center mb-4">
+          <div id="scoreRing" class="score-ring w-36 h-36 flex items-center justify-center p-2">
+            <div class="bg-dark-900 rounded-full w-full h-full flex flex-col items-center justify-center">
+              <span id="scoreValue" class="text-4xl font-bold mono">—</span>
+              <span id="scoreGrade" class="text-xs font-semibold mt-1">—</span>
+            </div>
+          </div>
+        </div>
+        <div id="verdict" class="text-center text-xs text-white/50 leading-relaxed"></div>
+      </div>
+
+      <!-- Portfolio Overview -->
+      <div class="lg:col-span-2 glass rounded-2xl p-6 slide-up" style="animation-delay:0.2s">
+        <div class="text-xs text-white/40 uppercase tracking-wider mb-4">Portfolio Overview</div>
+        <div class="grid grid-cols-3 gap-4 mb-6">
+          <div>
+            <div class="text-2xl font-bold mono" id="totalValue">—</div>
+            <div class="text-xs text-white/40 mt-1">Total Value</div>
+          </div>
+          <div>
+            <div class="text-2xl font-bold mono" id="tokenCount">—</div>
+            <div class="text-xs text-white/40 mt-1">Tokens</div>
+          </div>
+          <div>
+            <div class="text-2xl font-bold mono" id="topConcentration">—</div>
+            <div class="text-xs text-white/40 mt-1">Top Token %</div>
+          </div>
+        </div>
+        <div class="h-48">
+          <canvas id="portfolioChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 2: Score Factors + Behavior -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+
+      <!-- Score Factors -->
+      <div class="glass rounded-2xl p-6 slide-up" style="animation-delay:0.3s">
+        <div class="text-xs text-white/40 uppercase tracking-wider mb-5">Score Breakdown</div>
+        <div id="factors" class="space-y-4"></div>
+      </div>
+
+      <!-- Activity Chart -->
+      <div class="glass rounded-2xl p-6 slide-up" style="animation-delay:0.4s">
+        <div class="text-xs text-white/40 uppercase tracking-wider mb-4">30-Day Activity</div>
+        <div class="grid grid-cols-2 gap-4 mb-4">
+          <div>
+            <div class="text-xl font-bold mono" id="txCount">—</div>
+            <div class="text-xs text-white/40 mt-1">Transactions</div>
+          </div>
+          <div>
+            <div class="text-xl font-bold mono" id="tradingStyle">—</div>
+            <div class="text-xs text-white/40 mt-1">Style</div>
+          </div>
+        </div>
+        <div class="h-40">
+          <canvas id="activityChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 3: Top Holdings + Actions -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+      <!-- Top Holdings -->
+      <div class="glass rounded-2xl p-6 slide-up" style="animation-delay:0.5s">
+        <div class="text-xs text-white/40 uppercase tracking-wider mb-4">Top Holdings</div>
+        <div id="holdings" class="space-y-2"></div>
+      </div>
+
+      <!-- Top Actions -->
+      <div class="glass rounded-2xl p-6 slide-up" style="animation-delay:0.6s">
+        <div class="text-xs text-white/40 uppercase tracking-wider mb-4">Transaction Types</div>
+        <div class="h-56 flex items-center justify-center">
+          <canvas id="actionsChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let portfolioChart, activityChart, actionsChart;
+
+    async function scan() {
+      const address = document.getElementById('addressInput').value.trim();
+      if (!address) return;
+
+      const btn = document.getElementById('scanBtn');
+      const loading = document.getElementById('loading');
+      const dashboard = document.getElementById('dashboard');
+      const errorEl = document.getElementById('error');
+
+      btn.disabled = true;
+      btn.textContent = 'Scanning...';
+      loading.classList.remove('hidden');
+      dashboard.classList.add('hidden');
+      errorEl.classList.add('hidden');
+
+      try {
+        const resp = await fetch(`/api/scan/${address}?tier=deep`);
+        const data = await resp.json();
+
+        if (!resp.ok) throw new Error(data.error || 'Scan failed');
+
+        renderDashboard(data);
+        dashboard.classList.remove('hidden');
+      } catch (err) {
+        errorEl.classList.remove('hidden');
+        errorEl.querySelector('div').textContent = err.message;
+      } finally {
+        loading.classList.add('hidden');
+        btn.disabled = false;
+        btn.textContent = 'Deep Scan';
+      }
+    }
+
+    function renderDashboard(data) {
+      const { portfolio, behavior, trustScore } = data;
+
+      // Trust Score
+      const gradeClass = `grade-${trustScore.grade.replace(' ', '_')}`;
+      const ring = document.getElementById('scoreRing');
+      ring.className = `score-ring w-36 h-36 flex items-center justify-center p-2 ${gradeClass}`;
+      ring.style.setProperty('--pct', trustScore.score);
+
+      document.getElementById('scoreValue').textContent = trustScore.score;
+      const gradeEl = document.getElementById('scoreGrade');
+      gradeEl.textContent = trustScore.grade;
+      gradeEl.className = `text-xs font-semibold mt-1 ${gradeClass}`;
+
+      document.getElementById('verdict').textContent =
+        trustScore.score >= 50
+          ? 'Reasonable on-chain credibility. Proceed with standard caution.'
+          : 'Low trust indicators detected. Exercise extra caution before copy-trading.';
+
+      // Portfolio
+      document.getElementById('totalValue').textContent = '$' + portfolio.totalValueUsd.toLocaleString();
+      document.getElementById('tokenCount').textContent = portfolio.tokenCount;
+      document.getElementById('topConcentration').textContent = (portfolio.top10[0]?.pct ?? 0) + '%';
+
+      // Portfolio Chart
+      if (portfolioChart) portfolioChart.destroy();
+      const labels = portfolio.top10.map(t => t.symbol);
+      const values = portfolio.top10.map(t => t.value);
+      const colors = [
+        '#6366f1','#8b5cf6','#a78bfa','#c4b5fd','#818cf8',
+        '#6ee7b7','#34d399','#fbbf24','#f97316','#ef4444'
+      ];
+
+      portfolioChart = new Chart(document.getElementById('portfolioChart'), {
+        type: 'doughnut',
+        data: {
+          labels,
+          datasets: [{ data: values, backgroundColor: colors, borderWidth: 0 }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '65%',
+          plugins: {
+            legend: {
+              position: 'right',
+              labels: { color: 'rgba(255,255,255,0.5)', font: { size: 11 }, padding: 8, usePointStyle: true, pointStyleWidth: 8 }
+            }
+          }
+        }
+      });
+
+      // Score Factors
+      const factorNames = {
+        portfolioSize: 'Portfolio Size',
+        diversification: 'Diversification',
+        activity: 'Activity',
+        holdingDuration: 'Holding Duration',
+        riskExposure: 'Risk Exposure'
+      };
+      const factorsEl = document.getElementById('factors');
+      factorsEl.innerHTML = '';
+      for (const [key, label] of Object.entries(factorNames)) {
+        const val = trustScore.factors[key];
+        const pct = (val / 20) * 100;
+        const color = pct >= 75 ? '#22c55e' : pct >= 50 ? '#eab308' : pct >= 25 ? '#f97316' : '#ef4444';
+        factorsEl.innerHTML += `
+          <div>
+            <div class="flex justify-between text-xs mb-1.5">
+              <span class="text-white/60">${label}</span>
+              <span class="mono text-white/80">${val}/20</span>
+            </div>
+            <div class="factor-bar h-2">
+              <div class="factor-fill" style="width:${pct}%; background:${color}"></div>
+            </div>
+          </div>
+        `;
+      }
+
+      // Behavior
+      document.getElementById('txCount').textContent = behavior.txCount;
+      document.getElementById('tradingStyle').textContent = behavior.tradingStyle;
+
+      // Activity Chart
+      if (activityChart) activityChart.destroy();
+      const days = Object.keys(behavior.dailyTxs).sort();
+      const txValues = days.map(d => behavior.dailyTxs[d]);
+
+      activityChart = new Chart(document.getElementById('activityChart'), {
+        type: 'bar',
+        data: {
+          labels: days.map(d => d.slice(5)),
+          datasets: [{
+            data: txValues,
+            backgroundColor: 'rgba(99, 102, 241, 0.4)',
+            borderColor: '#6366f1',
+            borderWidth: 1,
+            borderRadius: 3,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: 'rgba(255,255,255,0.3)', font: { size: 9 } }, grid: { display: false } },
+            y: { ticks: { color: 'rgba(255,255,255,0.3)', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+          }
+        }
+      });
+
+      // Holdings
+      const holdingsEl = document.getElementById('holdings');
+      holdingsEl.innerHTML = '';
+      portfolio.top10.forEach((t, i) => {
+        holdingsEl.innerHTML += `
+          <div class="flex items-center justify-between py-2 ${i < portfolio.top10.length - 1 ? 'border-b border-white/5' : ''}">
+            <div class="flex items-center gap-3">
+              <span class="text-xs text-white/30 w-4">${i + 1}</span>
+              ${t.icon ? `<img src="${t.icon}" class="w-6 h-6 rounded-full" onerror="this.style.display='none'"/>` : `<div class="w-6 h-6 rounded-full bg-white/10"></div>`}
+              <div>
+                <div class="text-sm font-medium">${t.symbol}</div>
+                <div class="text-xs text-white/30">${t.name}</div>
+              </div>
+            </div>
+            <div class="text-right">
+              <div class="text-sm mono">$${t.value.toLocaleString()}</div>
+              <div class="text-xs text-white/30">${t.pct}%</div>
+            </div>
+          </div>
+        `;
+      });
+
+      // Actions Chart
+      if (actionsChart) actionsChart.destroy();
+      if (behavior.topActions.length > 0) {
+        const actionColors = ['#6366f1','#8b5cf6','#22c55e','#eab308','#f97316'];
+        actionsChart = new Chart(document.getElementById('actionsChart'), {
+          type: 'doughnut',
+          data: {
+            labels: behavior.topActions.map(a => a.action),
+            datasets: [{
+              data: behavior.topActions.map(a => a.count),
+              backgroundColor: actionColors.slice(0, behavior.topActions.length),
+              borderWidth: 0,
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '55%',
+            plugins: {
+              legend: {
+                position: 'bottom',
+                labels: { color: 'rgba(255,255,255,0.5)', font: { size: 11 }, padding: 12, usePointStyle: true, pointStyleWidth: 8 }
+              }
+            }
+          }
+        });
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "name": "walletscope",
+  "version": "1.0.0",
+  "description": "On-chain wallet analysis agent powered by Virtuals Protocol ACP",
+  "main": "dist/agent.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "tsc && node dist/agent.js",
+    "dashboard": "tsc && node dist/server.js",
+    "dev": "ts-node agent.ts"
+  },
+  "dependencies": {
+    "@types/express": "^5.0.6",
+    "@virtuals-protocol/game": "^0.1.14",
+    "axios": "^1.7.0",
+    "dotenv": "^16.4.0",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.4.0"
+  }
+}
